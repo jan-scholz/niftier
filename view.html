@@ -171,22 +171,20 @@
     const azimuthSlider = document.getElementById("azimuth");
     const elevationSlider = document.getElementById("elevation");
 
-    function setView(name) {
-      nv.setSliceType(views[name]);
-      sliceButtons.forEach((b) => b.classList.toggle("active", b.dataset.view === name));
-      renderControls.hidden = name !== "render";
-      if (name === "render") {
-        nv.setRenderAzimuthElevation(Number(azimuthSlider.value), Number(elevationSlider.value));
-      }
-    }
-
-    sliceButtons.forEach((b) => b.addEventListener("click", () => setView(b.dataset.view)));
-
     function updateRenderAngle() {
       nv.setRenderAzimuthElevation(Number(azimuthSlider.value), Number(elevationSlider.value));
     }
     azimuthSlider.addEventListener("input", updateRenderAngle);
     elevationSlider.addEventListener("input", updateRenderAngle);
+
+    function setView(name) {
+      nv.setSliceType(views[name]);
+      sliceButtons.forEach((b) => b.classList.toggle("active", b.dataset.view === name));
+      renderControls.hidden = name !== "render";
+      if (name === "render") updateRenderAngle();
+    }
+
+    sliceButtons.forEach((b) => b.addEventListener("click", () => setView(b.dataset.view)));
 
     // Thresholding (cal_min / cal_max)
     const calMinSlider = document.getElementById("cal-min");
