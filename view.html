@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>NiiVue Viewer</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #000; overflow: hidden; font-family: sans-serif; }
+    #canvas-wrap { position: absolute; inset: 0; }
+    canvas { width: 100%; height: 100%; display: block; }
+
+    #controls {
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 8px 12px;
+      background: rgba(20, 20, 20, 0.75);
+      color: #eee;
+      font-size: 13px;
+      z-index: 10;
+    }
+    #controls .group { display: flex; align-items: center; gap: 6px; }
+    #controls button {
+      background: #333;
+      color: #eee;
+      border: 1px solid #555;
+      border-radius: 4px;
+      padding: 4px 10px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    #controls button:hover { background: #444; }
+    #controls button.active { background: #1a6fd6; border-color: #1a6fd6; }
+    #controls label { display: flex; align-items: center; gap: 4px; }
+    #controls input[type="range"] { width: 100px; }
+    #controls .value {
+      display: inline-block;
+      width: 9ch;
+      font-family: "SF Mono", Menlo, Consolas, monospace;
+      text-align: right;
+    }
+
+    #error-overlay[hidden] { display: none; }
+    #error-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0, 0, 0, 0.9);
+      color: #eee;
+      text-align: center;
+      z-index: 20;
+      padding: 16px;
+    }
+    #error-overlay .box { max-width: 640px; }
+    #error-overlay h2 { color: #ff6b6b; margin: 0 0 12px; }
+    #error-overlay code {
+      display: inline-block;
+      margin-top: 8px;
+      padding: 4px 8px;
+      background: #222;
+      border-radius: 4px;
+      font-family: "SF Mono", Menlo, Consolas, monospace;
+      word-break: break-all;
+    }
+  </style>
+</head>
+<body>
+  <div id="error-overlay" hidden>
+    <div class="box">
+      <h2>Volume not found</h2>
+      <p id="error-message"></p>
+      <p>Pass the file to load with <code>?data=</code>, e.g.</p>
+      <code id="error-example"></code>
+    </div>
+  </div>
+  <div id="controls">
+    <div class="group" id="slice-buttons">
+      <button data-view="axial">Axial</button>
+      <button data-view="coronal">Coronal</button>
+      <button data-view="sagittal">Sagittal</button>
+      <button data-view="multiplanar">Multiplanar</button>
+      <button data-view="render">3D Render</button>
+    </div>
+    <div class="group" id="render-controls" hidden>
+      <label>Azimuth <input type="range" id="azimuth" min="0" max="360" value="120" /></label>
+      <label>Elevation <input type="range" id="elevation" min="-90" max="90" value="15" /></label>
+    </div>
+    <div class="group" id="threshold-controls">
+      <label>Min <input type="range" id="cal-min" step="any" /> <span id="cal-min-val" class="value"></span></label>
+      <label>Max <input type="range" id="cal-max" step="any" /> <span id="cal-max-val" class="value"></span></label>
+      <button id="reset-threshold">Reset</button>
+    </div>
+  </div>
+  <div id="canvas-wrap">
+    <canvas id="gl1"></canvas>
+  </div>
+
+  <script type="module">
+    import { Niivue, NVImage } from "./node_modules/@niivue/niivue/dist/index.js";
+
+    // Volume path is configurable via ?data=, matching the Makefile's DATA variable
+    // (see `make run DATA=data/your_volume.nii.gz`) - defaults to the same path.
+    const dataPath = new URLSearchParams(location.search).get("data") || "data/volume.nii.gz";
+    const lowresPath = dataPath.replace(/\.nii\.gz$/, "") + "_lowres.nii.gz";
+    document.title = `NiiVue: ${dataPath.split("/").pop()}`;
+
+    function showError(message) {
+      document.getElementById("error-message").textContent = message;
+      document.getElementById("error-example").textContent =
+        `${location.origin}${location.pathname}?data=data/your_volume.nii.gz`;
+      document.getElementById("error-overlay").hidden = false;
+    }
+
+    async function urlExists(url) {
+      try {
+        const res = await fetch(url, { method: "HEAD" });
+        return res.ok;
+      } catch {
+        return false;
+      }
+    }
+
+    // Check the volume exists before touching NiiVue - it shows its own "loading ..."
+    // text that never resolves on a 404, leaving the user stuck with no explanation.
+    if (!(await urlExists(dataPath))) {
+      showError(`"${dataPath}" was not found on the server.`);
+      throw new Error(`volume not found: ${dataPath}`);
+    }
+
+    const nv = new Niivue();
+    await nv.attachToCanvas(document.getElementById("gl1"));
+
+    try {
+      await nv.loadVolumes([{ url: dataPath }]);
+    } catch (err) {
+      showError(`Failed to load "${dataPath}": ${err.message ?? err}`);
+      throw err;
+    }
+
+    // A downsampled copy of the volume (see Makefile / scripts/make_lowres.py) used as a
+    // stand-in while the threshold sliders are being dragged. NiiVue's updateGLVolume()
+    // rebuilds the GPU texture for every loaded volume unconditionally, which is what
+    // makes dragging the sliders directly against the full-res volume stutter. Swapping
+    // to the tiny volume during drag and back to full-res on release keeps interaction
+    // smooth while still committing the real thresholds once the user lets go.
+    const fullresVolume = nv.volumes[0];
+    const lowresVolume = await NVImage.loadFromUrl({ url: lowresPath });
+    lowresVolume.cal_min = fullresVolume.cal_min;
+    lowresVolume.cal_max = fullresVolume.cal_max;
+    let previewing = false;
+
+    const views = {
+      axial: nv.sliceTypeAxial,
+      coronal: nv.sliceTypeCoronal,
+      sagittal: nv.sliceTypeSagittal,
+      multiplanar: nv.sliceTypeMultiplanar,
+      render: nv.sliceTypeRender,
+    };
+
+    const sliceButtons = document.querySelectorAll("#slice-buttons button");
+    const renderControls = document.getElementById("render-controls");
+    const azimuthSlider = document.getElementById("azimuth");
+    const elevationSlider = document.getElementById("elevation");
+
+    function setView(name) {
+      nv.setSliceType(views[name]);
+      sliceButtons.forEach((b) => b.classList.toggle("active", b.dataset.view === name));
+      renderControls.hidden = name !== "render";
+      if (name === "render") {
+        nv.setRenderAzimuthElevation(Number(azimuthSlider.value), Number(elevationSlider.value));
+      }
+    }
+
+    sliceButtons.forEach((b) => b.addEventListener("click", () => setView(b.dataset.view)));
+
+    function updateRenderAngle() {
+      nv.setRenderAzimuthElevation(Number(azimuthSlider.value), Number(elevationSlider.value));
+    }
+    azimuthSlider.addEventListener("input", updateRenderAngle);
+    elevationSlider.addEventListener("input", updateRenderAngle);
+
+    // Thresholding (cal_min / cal_max)
+    const calMinSlider = document.getElementById("cal-min");
+    const calMaxSlider = document.getElementById("cal-max");
+    const calMinVal = document.getElementById("cal-min-val");
+    const calMaxVal = document.getElementById("cal-max-val");
+    const resetThresholdBtn = document.getElementById("reset-threshold");
+
+    const rangeMin = fullresVolume.global_min ?? fullresVolume.cal_min;
+    const rangeMax = fullresVolume.global_max ?? fullresVolume.cal_max;
+    const step = (rangeMax - rangeMin) / 1000 || 1;
+
+    for (const slider of [calMinSlider, calMaxSlider]) {
+      slider.min = rangeMin;
+      slider.max = rangeMax;
+      slider.step = step;
+    }
+
+    // Fixed-width scientific notation (e.g. "+3.64e+07") so the value display doesn't
+    // reflow the layout as the digit count changes across the threshold's range.
+    function formatSci(value, decimals = 2) {
+      const sign = value < 0 ? "-" : "+";
+      const [mantissa, exponent] = Math.abs(value).toExponential(decimals).split("e");
+      const expSign = exponent.startsWith("-") ? "-" : "+";
+      const expDigits = exponent.replace(/^[+-]/, "").padStart(2, "0");
+      return `${sign}${mantissa}e${expSign}${expDigits}`;
+    }
+
+    function applyThreshold(volume) {
+      let min = Number(calMinSlider.value);
+      let max = Number(calMaxSlider.value);
+      if (min > max) [min, max] = [max, min];
+      volume.cal_min = min;
+      volume.cal_max = max;
+      calMinVal.textContent = formatSci(min);
+      calMaxVal.textContent = formatSci(max);
+    }
+
+    // Swap which volume is active. nv.back must be kept in sync with nv.volumes[0] -
+    // it's what drawScene() reads each frame, and refreshLayers() only mutates
+    // nv.back's fields in place rather than reassigning the reference, so leaving it
+    // pointed at the old volume makes NiiVue think nothing is loaded (blank "loading..." screen).
+    function activateVolume(volume) {
+      nv.volumes = [volume];
+      nv.back = volume;
+    }
+
+    // While dragging: swap to the lowres volume so every slider tick stays cheap.
+    function previewThreshold() {
+      if (!previewing) {
+        previewing = true;
+        activateVolume(lowresVolume);
+      }
+      applyThreshold(lowresVolume);
+      nv.updateGLVolume();
+    }
+
+    // On release: commit the final thresholds to the full-res volume and swap back.
+    function commitThreshold() {
+      previewing = false;
+      applyThreshold(fullresVolume);
+      activateVolume(fullresVolume);
+      nv.updateGLVolume();
+    }
+
+    function resetThreshold() {
+      calMinSlider.value = fullresVolume.robust_min ?? rangeMin;
+      calMaxSlider.value = fullresVolume.robust_max ?? rangeMax;
+      commitThreshold();
+    }
+
+    calMinSlider.addEventListener("input", previewThreshold);
+    calMaxSlider.addEventListener("input", previewThreshold);
+    calMinSlider.addEventListener("change", commitThreshold);
+    calMaxSlider.addEventListener("change", commitThreshold);
+    resetThresholdBtn.addEventListener("click", resetThreshold);
+
+    resetThreshold();
+    setView("multiplanar");
+  </script>
+</body>
+</html>

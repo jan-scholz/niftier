@@ -1,0 +1,8 @@
+{
+  "dependencies": {
+    "@niivue/niivue": "^0.69.0"
+  },
+  "devDependencies": {
+    "http-server": "^14.1.1"
+  }
+}
