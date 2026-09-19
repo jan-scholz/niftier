@@ -6,7 +6,10 @@ and interactive intensity thresholding.
 ## Usage
 
 1. Put your volume at `data/volume.nii.gz` (gitignored — not checked in), or
-   use any other path via `DATA`, e.g. `data/my_volume.nii.gz`.
+   use any other path via `DATA`, e.g. `data/my_volume.nii.gz`. No data of
+   your own? `make install && make run DATA=sample/mni152.nii.gz` loads the
+   small human MRI template checked into `sample/` (see `sample/NOTICE.md`
+   for license/attribution).
 2. `make install`
 3. `make run` (or `make run DATA=data/my_volume.nii.gz`), then open the
    URL it prints — the `?data=...` in it is required; `view.html` alone

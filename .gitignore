@@ -1,2 +1,8 @@
 node_modules/
 data/
+
+# Generated preview volumes (see scripts/make_lowres.py) and the Makefile's
+# factor-tracking marker - not ignored via a directory rule since these can
+# also be generated next to checked-in sample data (e.g. sample/).
+*_lowres.nii.gz
+.lowres_factor
