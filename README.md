@@ -1,9 +1,18 @@
 # Niftier Viewer
 
-![Niftier Viewer](docs/hero.jpg)
+![Niftier Viewer](docs/hero.png)
 
 A small [NiiVue](https://niivue.com/) viewer, with slice/3D render controls
 and interactive intensity thresholding.
+
+## Quickstart
+
+Start the application:
+```
+make run DATA=sample/mni152.nii.gz
+```
+
+Then open [`http://127.0.0.1:8080/view.html?data=sample/mni152.nii.gz`](http://127.0.0.1:8080/view.html?data=sample/mni152.nii.gz)
 
 ## Usage
 
