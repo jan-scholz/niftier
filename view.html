@@ -99,7 +99,7 @@
   </div>
 
   <script type="module">
-    import { Niivue, NVImage } from "./node_modules/@niivue/niivue/dist/index.js";
+    import { Niivue, NVImage, MULTIPLANAR_TYPE } from "./node_modules/@niivue/niivue/dist/index.js";
 
     // Volume path is configurable via ?data=, matching the Makefile's DATA variable
     // (see `make run DATA=data/your_volume.nii.gz`) - defaults to the same path.
@@ -131,6 +131,12 @@
     }
 
     const nv = new Niivue();
+    // Force a 2x2 grid so the 3D render pane always joins the 3 slice views in
+    // Multiplanar mode. NiiVue's default "auto" layout picks a 3-across row
+    // instead for some volume aspect ratios / canvas sizes, which drops the
+    // render pane entirely (its AUTO show-render logic only guarantees the
+    // render pane for the grid layout, not row/column).
+    nv.opts.multiplanarLayout = MULTIPLANAR_TYPE.GRID;
     await nv.attachToCanvas(document.getElementById("gl1"));
 
     try {
