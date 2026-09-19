@@ -154,8 +154,7 @@
     // smooth while still committing the real thresholds once the user lets go.
     const fullresVolume = nv.volumes[0];
     const lowresVolume = await NVImage.loadFromUrl({ url: lowresPath });
-    lowresVolume.cal_min = fullresVolume.cal_min;
-    lowresVolume.cal_max = fullresVolume.cal_max;
+    applyThreshold(lowresVolume, thresholdOf(fullresVolume));
     let previewing = false;
 
     const views = {
@@ -213,12 +212,24 @@
       return `${sign}${mantissa}e${expSign}${expDigits}`;
     }
 
-    function applyThreshold(volume) {
+    // A threshold is a { min, max } intensity window; a volume displays it via cal_min/cal_max.
+    function thresholdOf(volume) {
+      return { min: volume.cal_min, max: volume.cal_max };
+    }
+
+    function thresholdFromSliders() {
       let min = Number(calMinSlider.value);
       let max = Number(calMaxSlider.value);
       if (min > max) [min, max] = [max, min];
+      return { min, max };
+    }
+
+    function applyThreshold(volume, { min, max }) {
       volume.cal_min = min;
       volume.cal_max = max;
+    }
+
+    function showThreshold({ min, max }) {
       calMinVal.textContent = formatSci(min);
       calMaxVal.textContent = formatSci(max);
     }
@@ -238,14 +249,18 @@
         previewing = true;
         activateVolume(lowresVolume);
       }
-      applyThreshold(lowresVolume);
+      const threshold = thresholdFromSliders();
+      applyThreshold(lowresVolume, threshold);
+      showThreshold(threshold);
       nv.updateGLVolume();
     }
 
     // On release: commit the final thresholds to the full-res volume and swap back.
     function commitThreshold() {
       previewing = false;
-      applyThreshold(fullresVolume);
+      const threshold = thresholdFromSliders();
+      applyThreshold(fullresVolume, threshold);
+      showThreshold(threshold);
       activateVolume(fullresVolume);
       nv.updateGLVolume();
     }
