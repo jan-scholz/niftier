@@ -1,5 +1,7 @@
 # Niftier Viewer
 
+![Niftier Viewer](docs/hero.jpg)
+
 A small [NiiVue](https://niivue.com/) viewer, with slice/3D render controls
 and interactive intensity thresholding.
 
